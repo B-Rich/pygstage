@@ -4,7 +4,7 @@ Pygstage v0.1
 Pygstage (pronounced "pig stage") is a Python module for Pygame that implements
 a simple scene graph. A "stage" can be populated by "actor" objects, and a
 "camera" delivers the pygame.Surface object to be rendered in the window.
-Persistance and few other features are automatically handled by pygstage.
+Persistance, layers, and few other features are automatically handled by pygstage.
 
 CURRENTLY THIS VERSION IS NOWHERE NEAR FINISHED OR EVEN RUNNABLE.
 
@@ -12,7 +12,7 @@ CURRENTLY THIS VERSION IS NOWHERE NEAR FINISHED OR EVEN RUNNABLE.
 Pygstage requires Pygame to be installed. Pygame can be downloaded from http://pygame.org
 
 Pygstage was developed by Al Sweigart (al@inventwithpython.com)
-https://github.com/asweigart/pygcurse
+https://github.com/asweigart/pygstage
 
 
 Simplified BSD License:
@@ -51,42 +51,169 @@ import pygame
 
 
 class Camera(object):
-    def __init__(self, stage, width=None, height=None, x=0, y=0):
+    def __init__(self, stage, rect=None, width=None, height=None, x=0, y=0, follow=None, wander=None, wanderx=0, wandery=0, zoom=1.0):
+        """TODO docstring"""
+        self.follow = follow
+        self.zoom = zoom
+
+        # If rect is set, then it overrides width, height, x, and y.
+        if rect is None:
+            if width is None or height is None:
+                raise TypeError('Arguments for width and height are required if no rect argument is given')
+
+            self.rect = pygame.Rect(0, 0, width, height)
+            self.rect.centerx = x
+            self.rect.centery = y
+        else:
+            self.rect = pygame.Rect(rect)
+
+        # If wander is set, then it overrides wanderx and wandery.
+        if wander is not None:
+            self.wander = wander
+        else:
+            self.wanderx = wanderx
+            self.wandery = wandery
+
+        # Attach this camera to the stage
         self.stage = stage
-        if width is None:
-            width = None # TODO - need a way to get window size
-        if height is None:
-            height = None # TODO - need a way to get window size
+        self.stage.cameras.append(self) # TODO - note, stage has to implement list stuff
 
-        self.rect = pygame.Rect()
+    # stage property
+    def _propgetstage(self):
+        return self._stage
 
-        self.follow = None # the Actor object that the camera follows
-        self.wanderx = 0 # how far left and right from the center before the camera follows
-        self.wantery = 0 # how far up and down from the center before the camera follows
-        self.zoom = 1.0
+    def _propsetstage(self, value):
+        # stage can only be a pygstage Stage object.
+        if value.__class__.__name__ != 'Stage':
+            raise TypeError('Camera stage must be a Stage object')
+        self._stage = value
 
-    # The "wander" property is how far the followed Actor can stray from the camera before the camera follows.
+    stage = property(_propgetstage, _propsetstage)
+
+
+    # wander property
     def _propgetwander(self):
-        if self.wanderx == self.wandery:
-            return self.wanderx
+        if self._wanderx == self._wandery:
+            return self._wanderx
         else:
             return None # returns None if the wanderx and wandery don't match
+
     def _propsetwander(self, value):
-        self.wanderx = value
-        self.wandery = value
+        try:
+            value = int(value)
+            if value < 0:
+                raise ValueError('Camera wander must be positive: %.200s' % (value))
+            self._wanderx = value
+            self._wandery = value
+        except (ValueError, TypeError):
+            raise TypeError('Camera wander must be castable to int: %.200s' % (value))
+
     wander = property(_propgetwander, _propsetwander)
 
-    def blit(self):
+
+    # wanderx property
+    def _propgetwanderx(self):
+        return self._wanderx
+
+    def _propsetwanderx(self, value):
+        try:
+            value = int(value)
+            if value < 0:
+                raise ValueError('Camera wanderx must be positive: %.200s' % (value))
+            self._wanderx = value
+        except (ValueError, TypeError):
+            raise TypeError('Camera wanderx must be castable to int: %.200s' % (value))
+
+    wanderx = property(_propgetwanderx, _propsetwanderx)
+
+
+    # wandery property
+    def _propgetwandery(self):
+        return self._wandery
+
+    def _propsetwandery(self, value):
+        try:
+            value = int(value)
+            if value < 0:
+                raise ValueError('Camera wandery must be positive: %.200s' % (value))
+            self._wandery = value
+        except (ValueError, TypeError):
+            raise TypeError('Camera wandery must be castable to int: %.200s' % (value))
+
+    wandery = property(_propgetwandery, _propsetwandery)
+
+
+    # rect property
+    def _propgetrect(self):
+        return self._rect
+
+    def _propsetrect(self, value):
+        try:
+            self.rect = pygame.Rect(value)
+        except TypeError:
+            raise TypeError('Camera rect must be rect style object')
+
+    rect = property(_propgetrect, _propsetrect)
+
+
+    # Setting up properties so the user only needs to type camObj.left, instead of camObj.rect.left.
+    for attrname in ('top', 'left', 'bottom', 'right', 'topleft', 'bottomleft', 'topright', 'bottomright', 'midtop', 'midleft', 'midbottom', 'midright', 'center', 'centerx', 'centery', 'size', 'width', 'height', 'x', 'y', 'w', 'h'):
+        exec("""def _propget%s(self): return self.rect.%s""" % (attrname, attrname))
+        exec("""def _propset%s(self, value): self.rect.%s = value""" % (attrname, attrname))
+        exec("""%s = property(_propget%s, _propset%s)""" % (attrname, attrname, attrname))
+
+
+    # follow property
+    def _propgetfollow(self):
+        return self._follow
+
+    def _propsetfollow(self, value):
+        if value is not None:
+            if value.__class__.__name__ != 'Actor':
+                raise TypeError('Camera follow argument must be an Actor object')
+        self._follow = value
+
+    follow = property(_propgetfollow, _propsetfollow)
+
+
+    # zoom property
+    def _propgetzoom(self):
+        return self._zoom
+
+    def _propsetzoom(self, value):
+        try:
+            self.zoom = float(value)
+        except (ValueError, TypeError):
+            raise TypeError('Camera zoom argument must be castable to float: %.200s' % (value))
+
+    zoom = property(_propgetzoom, _propsetzoom)
+
+
+    def blit(self, destSurface, dest):
+        """TODO docstring"""
         pass
 
     # TODO: handle special case where the followed actor is larger than the wander distance. ACTUALLY,
     # have it so that the wander distance only applies to the center of the followed actor. (Easier to implement)
 
 
+
+
+
+
+
 class Actor(object):
-    for attrname in ('top', 'left', 'bottom', 'right', 'topleft', 'bottomleft', 'topright', 'bottomright', 'midtop', 'midleft', 'midbottom', 'midright', 'center', 'centerx', 'centery', 'size', 'width', 'height', 'x', 'y', 'w', 'h'):
-        exec("""def _propget%s(self): return self.rect.%s""" % (attrname, attrname))
-        exec("""def _propset%s(self, value): self.rect.%s = value""" % (attrname, attrname))
+    def __init__(self, image, stage=None, x=0, y=0):
+        """TODO docstring"""
+        self.stage = stage
+        self.stage.actors.append(self)
+
+    # Setting up properties so the user only needs to type actorObj.left, instead of actorObj.rect.left.
+    # NOTE - size, width, and height cannot be set since these are dependent on the image
+    # TODO - wait, shouldn't this be modifying the image's rect?
+    for attrname in ('top', 'left', 'bottom', 'right', 'topleft', 'bottomleft', 'topright', 'bottomright', 'midtop', 'midleft', 'midbottom', 'midright', 'center', 'centerx', 'centery', 'x', 'y', 'w', 'h'):
+        exec("""def _propget%s(self): return self._rect.%s""" % (attrname, attrname))
+        exec("""def _propset%s(self, value): self._rect.%s = value""" % (attrname, attrname))
         exec("""%s = property(_propget%s, _propset%s)""" % (attrname, attrname, attrname))
 
     def _propgetimage(self):
@@ -100,15 +227,18 @@ class Actor(object):
         self.rect = self.image.get_rect()
 
 
-    def __init__(self, image, x=0, y=0):
-        self.image = image
-        self.visible = True
-        self.x = x
-        self.y = y
-        #self.rotate = 0 # TODO - is this needed? What about scaling, etc.
+
+
+
+
+
+
+
+
 
 
 class Stage(object):
+    """TODO docstring"""
     def _propgetbgcolor(self):
         return self.bgcolor
     def _propsetbgcolor(self, value):
@@ -149,9 +279,3 @@ class Stage(object):
 
         self.background = background # a tiled image for the background (supercedes bgcolor)
 
-        self.layersOrder = ['foreground']
-        self.layers = {'foreground': Layer()}
-
-class Layer(object):
-    def __init__(self):
-        pass
