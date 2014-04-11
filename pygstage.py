@@ -51,6 +51,8 @@ import pygame
 
 
 class Camera(object):
+    """TODO docstring"""
+
     def __init__(self, stage, rect=None, width=None, height=None, x=0, y=0, follow=None, wander=None, wanderx=0, wandery=0, zoom=1.0):
         """TODO docstring"""
         self.follow = follow
@@ -149,7 +151,8 @@ class Camera(object):
 
     def _propsetrect(self, value):
         try:
-            self.rect = pygame.Rect(value)
+            self._rect = pygame.Rect(value)
+            self._surface = pygame.Surface((self._rect.width, self._rect.height))
         except TypeError:
             raise TypeError('Camera rect must be rect style object')
 
@@ -157,11 +160,31 @@ class Camera(object):
 
 
     # Setting up properties so the user only needs to type camObj.left, instead of camObj.rect.left.
-    for attrname in ('top', 'left', 'bottom', 'right', 'topleft', 'bottomleft', 'topright', 'bottomright', 'midtop', 'midleft', 'midbottom', 'midright', 'center', 'centerx', 'centery', 'size', 'width', 'height', 'x', 'y', 'w', 'h'):
-        exec("""def _propget%s(self): return self.rect.%s""" % (attrname, attrname))
-        exec("""def _propset%s(self, value): self.rect.%s = value""" % (attrname, attrname))
+    for attrname in ('top', 'left', 'bottom', 'right', 'topleft', 'bottomleft', 'topright', 'bottomright', 'midtop', 'midleft', 'midbottom', 'midright', 'center', 'centerx', 'centery', 'x', 'y', 'w', 'h'):
+        exec("""def _propget%s(self): return self._rect.%s""" % (attrname, attrname))
+        # TODO - no clue if this halfwidth/halfheight code is any good.
+        exec("""def _propset%s(self, value):
+            self._rect.%s = value
+            if self._stage.width is not None:
+                if self._rect.left < -self._halfwidth:
+                    self._rect.left = -self._halfwidth
+                elif self._rect.right > self._halfwidth:
+                    self._rect.right = self._halfwidth
+            if self._stage.height is not None:
+                if self._rect.top < -self._halfheight:
+                    self._rect.top = -self._halfheight
+                if self._rect.bottom > self._halfheight:
+                    self._rect.bottom = self._halfheight
+            """ % (attrname, attrname))
         exec("""%s = property(_propget%s, _propset%s)""" % (attrname, attrname, attrname))
 
+    # Setting up properties that change the size of the camera's Surface object.
+    for attrname in ('size', 'width', 'height'):
+        exec("""def _propget%s(self): return self._rect.%s""" % (attrname, attrname))
+        exec("""def _propset%s(self, value):
+            self._rect.%s = value
+            self._surface = pygame.Surface((self._rect.width, self._rect.height))""" % (attrname, attrname))
+        exec("""%s = property(_propget%s, _propset%s)""" % (attrname, attrname, attrname))
 
     # follow property
     def _propgetfollow(self):
@@ -192,6 +215,17 @@ class Camera(object):
     def blit(self, destSurface, dest):
         """TODO docstring"""
         pass
+        # Get the stage's bgcolor, background, and all actors
+
+        # Draw the bgcolor and position the background
+
+        # Find the actors that intersect with this camera.
+
+        # Order the actors by their zorders.
+
+        # Draw all the actors
+
+        # Blit the Camera's Surface object to destSurface
 
     # TODO: handle special case where the followed actor is larger than the wander distance. ACTUALLY,
     # have it so that the wander distance only applies to the center of the followed actor. (Easier to implement)
@@ -203,7 +237,7 @@ class Camera(object):
 
 
 class Actor(object):
-    def __init__(self, image, stage=None, x=0, y=0):
+    def __init__(self, image, stage=None, x=0, y=0, zorder=0):
         """TODO docstring"""
         self.stage = stage
         self.stage.actors.append(self)
@@ -239,43 +273,57 @@ class Actor(object):
 
 class Stage(object):
     """TODO docstring"""
-    def _propgetbgcolor(self):
-        return self.bgcolor
-    def _propsetbgcolor(self, value):
-        if type(value) == str:
-            self.bgcolor = pygame.Color(value)
-        elif type(value) in (tuple, list):
-            self.bgcolor = pygame.Color(*value)
-    bgcolor = property(_propgetbgcolor, _propsetbgcolor)
 
-    def _propgetbackground(self):
-        return self.background
-    def _propsetbackground(self, value):
-        if type(value) == str:
-            self.background = pygame.image.load(value)
-        else:
-            self.background = value
-        # TODO - handle animated backgrounds with Pyganim?
-    background = property(_propgetbackground, _propsetbackground)
-
-    def _propgetw(self):
-        return self.width
-    def _propsetw(self, value):
-        self.width = value
-    def _propgeth(self):
-        return self.height
-    def _propseth(self, value):
-        self.height = value
 
     def __init__(self, width=None, height=None, bgcolor='black', background=None):
+        """TODO docstring"""
         # a width or height of None means an unlimited size in that dimension
         self.width = width
         self.height = height
-
         # TODO - actors needs to be special because changing it changes the z-order.
         self.actors = {} # can be either Actor objects or static images or PygAnim objects
-
-
-
         self.background = background # a tiled image for the background (supercedes bgcolor)
+
+
+    def _propgetbgcolor(self):
+        return self._bgcolor
+    def _propsetbgcolor(self, value):
+        if type(value) == str:
+            self._bgcolor = pygame.Color(value)
+        elif type(value) in (tuple, list):
+            self._bgcolor = pygame.Color(*value)
+    bgcolor = property(_propgetbgcolor, _propsetbgcolor)
+
+
+    def _propgetbackground(self):
+        return self._background
+    def _propsetbackground(self, value):
+        if type(value) == str:
+            self._background = pygame.image.load(value)
+        else:
+            self._background = value
+        # TODO - handle animated backgrounds with Pyganim?
+    background = property(_propgetbackground, _propsetbackground)
+
+
+    def _propgetw(self):
+        return self._width
+
+    def _propsetw(self, value):
+        self._width = value
+        self._halfwidth = int(value / 2)
+
+    width = property(_propgetw, _propsetw)
+    w = width
+
+
+    def _propgeth(self):
+        return self._height
+
+    def _propseth(self, value):
+        self._height = value
+        self._halfheight = int(value / 2)
+
+    height = property(_propgeth, _propseth)
+    h = height
 
