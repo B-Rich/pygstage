@@ -63,11 +63,11 @@ class Camera(object):
             if width is None or height is None:
                 raise TypeError('Arguments for width and height are required if no rect argument is given')
 
-            self.rect = pygame.Rect(0, 0, width, height)
-            self.rect.centerx = x
-            self.rect.centery = y
+            self._rect = pygame.Rect(0, 0, width, height)
+            self._rect.centerx = x
+            self._rect.centery = y
         else:
-            self.rect = pygame.Rect(rect)
+            self._rect = pygame.Rect(rect)
 
         # If wander is set, then it overrides wanderx and wandery.
         if wander is not None:
@@ -162,19 +162,22 @@ class Camera(object):
     # Setting up properties so the user only needs to type camObj.left, instead of camObj.rect.left.
     for attrname in ('top', 'left', 'bottom', 'right', 'topleft', 'bottomleft', 'topright', 'bottomright', 'midtop', 'midleft', 'midbottom', 'midright', 'center', 'centerx', 'centery', 'x', 'y', 'w', 'h'):
         exec("""def _propget%s(self): return self._rect.%s""" % (attrname, attrname))
-        # TODO - no clue if this halfwidth/halfheight code is any good.
         exec("""def _propset%s(self, value):
+            oldWidth = self._rect.width
+            oldHeight = self._rect.height
             self._rect.%s = value
+            if oldWidth != self._rect.width or oldHeight != self._rect.height:
+                self._surface = pygame.Surface((self._rect.width, self._rect.height))
             if self._stage.width is not None:
-                if self._rect.left < -self._halfwidth:
-                    self._rect.left = -self._halfwidth
-                elif self._rect.right > self._halfwidth:
-                    self._rect.right = self._halfwidth
+                if self._rect.left < 0:
+                    self._rect.left = 0
+                elif self._rect.right > self._stage.width:
+                    self._rect.right = self._stage.width
             if self._stage.height is not None:
-                if self._rect.top < -self._halfheight:
-                    self._rect.top = -self._halfheight
-                if self._rect.bottom > self._halfheight:
-                    self._rect.bottom = self._halfheight
+                if self._rect.top < -self.0:
+                    self._rect.top = -self.0
+                if self._rect.bottom > self._stage.height:
+                    self._rect.bottom = self._stage.height
             """ % (attrname, attrname))
         exec("""%s = property(_propget%s, _propset%s)""" % (attrname, attrname, attrname))
 
@@ -215,20 +218,25 @@ class Camera(object):
     def blit(self, destSurface, dest):
         """TODO docstring"""
         pass
-        # Get the stage's bgcolor, background, and all actors
+        # Get the stage's actors
+        self._stage._actors
+
+        # Determine the position if this camera is following an actor
+        self.center = self._follow.center
 
         # Draw the bgcolor and position the background
+        self._surface.fill(self._stage.bgcolor) # TODO
 
-        # Find the actors that intersect with this camera.
+        # Determine the collision rectangle if this camera is zoomed at all
 
-        # Order the actors by their zorders.
+        # Find the actors that intersect with this camera
+
+        # Order the actors by their zorders
 
         # Draw all the actors
 
         # Blit the Camera's Surface object to destSurface
 
-    # TODO: handle special case where the followed actor is larger than the wander distance. ACTUALLY,
-    # have it so that the wander distance only applies to the center of the followed actor. (Easier to implement)
 
 
 
@@ -239,8 +247,9 @@ class Camera(object):
 class Actor(object):
     def __init__(self, image, stage=None, x=0, y=0, zorder=0):
         """TODO docstring"""
-        self.stage = stage
-        self.stage.actors.append(self)
+        self._stage = stage
+        self._stage._actors.append(self) # TODO - fix this when actors is set up for real
+        self._zorder = zorder # TODO - eventually make this a property that updates the stage's idea of what the actors' zorders are. For now, the stage will just poll.
 
     # Setting up properties so the user only needs to type actorObj.left, instead of actorObj.rect.left.
     # NOTE - size, width, and height cannot be set since these are dependent on the image
@@ -280,10 +289,12 @@ class Stage(object):
         # a width or height of None means an unlimited size in that dimension
         self.width = width
         self.height = height
-        # TODO - actors needs to be special because changing it changes the z-order.
-        self.actors = {} # can be either Actor objects or static images or PygAnim objects
         self.background = background # a tiled image for the background (supercedes bgcolor)
+        self.bgcolor = bgcolor
 
+        # TODO - eventually I'd like to subclass these so that these aren't just plain lists or dictionaries.
+        self._actors = {} # keys are strings of actor names, values are Actor objects.
+        self._cameras = {} # keys are strings of camera names, values are Camera objects.
 
     def _propgetbgcolor(self):
         return self._bgcolor
@@ -310,8 +321,7 @@ class Stage(object):
         return self._width
 
     def _propsetw(self, value):
-        self._width = value
-        self._halfwidth = int(value / 2)
+        self._width = int(value)
 
     width = property(_propgetw, _propsetw)
     w = width
@@ -321,8 +331,7 @@ class Stage(object):
         return self._height
 
     def _propseth(self, value):
-        self._height = value
-        self._halfheight = int(value / 2)
+        self._height = int(value)
 
     height = property(_propgeth, _propseth)
     h = height
